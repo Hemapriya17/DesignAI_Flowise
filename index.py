@@ -39,10 +39,10 @@ def json_to_table_data(response_data):
     return table_data
 
 # Streamlit app
-st.title("Flowise AI Frontend")
+st.title("System Design AI")
 
 # Text input for user to enter their question
-user_input = st.text_input("Enter your question:")
+user_input = st.text_input("Generate experimentation plan for...")
 
 # Button to generate response
 if st.button("Generate"):

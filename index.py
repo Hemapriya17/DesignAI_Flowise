@@ -4,10 +4,11 @@ import json
 import re
 
 # API URLs
-API_URL_1 = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/b83d91c5-7db1-4426-815b-d3b4e48cde31"
-API_URL_2 = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/f9893e95-2172-4b00-9b45-b14748ad1ae9"
-MERMAID_API_URL = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/3e98e228-996a-4205-8c75-3cf34774b088"
-FUNCTION_DIAGRAM_API_URL = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/9297a1fe-c925-4c00-9217-608d891b81ef"
+Component_Function = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/b83d91c5-7db1-4426-815b-d3b4e48cde31"
+Engineering_Requirements = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/f9893e95-2172-4b00-9b45-b14748ad1ae9"
+Component_Diagram = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/3e98e228-996a-4205-8c75-3cf34774b088"
+Function_Diagram = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/9297a1fe-c925-4c00-9217-608d891b81ef"
+FMEA = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/fe1c2f99-b3a6-4b2f-9145-c6e07c686483"
 
 # Function to query Flowise API
 def query_flowise_api(api_url, payload):
@@ -17,7 +18,7 @@ def query_flowise_api(api_url, payload):
     except json.JSONDecodeError:
         return {"error": "Invalid response from the API"}
 
-# Function to convert JSON response to table data
+# Function to convert JSON response to table data for components and functions
 def json_to_table_data(response_data):
     json_str = response_data.get('text', '{}').strip('```json').strip()  # Strip Markdown and extra spaces
     
@@ -57,9 +58,43 @@ def json_to_engineering_req_table(response_data):
     
     return table_data if table_data else [["No data found in the JSON."]]
 
+# Function to convert FMEA response to table data
+def json_to_fmea_table(response_data):
+    json_str = response_data.get('text', '').strip('```json').strip()
+    
+    try:
+        json_data = json.loads(json_str)
+    except json.JSONDecodeError:
+        return [], ["Error decoding JSON from 'text' field."]
+    
+    fmea_entries = json_data.get('fmea', [])
+    
+    if not fmea_entries:
+        return [], ["No data found in the 'fmea' key."]
+    
+    table_data = [
+        [
+            entry.get('id', ''),
+            entry.get('name_of_related_function', ''),
+            entry.get('name_of_requirement', ''),
+            entry.get('potential_failure_mode', ''),
+            entry.get('effects_of_failure', ''),
+            entry.get('severity', ''),
+            entry.get('cause_of_failure', ''),
+            entry.get('occurance', ''),
+            entry.get('design_controls', ''),
+            entry.get('detection', ''),
+            entry.get('rpn', ''),
+            entry.get('recommended_actions', '')
+        ]
+        for entry in fmea_entries
+    ]
+    
+    return table_data
+
 # Function to query the Mermaid API for component diagram
 def query_mermaid_api(user_input):
-    response = requests.post(MERMAID_API_URL, json={"question": user_input})
+    response = requests.post(Component_Diagram, json={"question": user_input})
     try:
         return response.json()
     except json.JSONDecodeError:
@@ -67,11 +102,19 @@ def query_mermaid_api(user_input):
 
 # Function to query the function diagram API
 def query_function_diagram_api(user_input):
-    response = requests.post(FUNCTION_DIAGRAM_API_URL, json={"question": user_input})
+    response = requests.post(Function_Diagram, json={"question": user_input})
     try:
         return response.json()
     except json.JSONDecodeError:
         return {"error": "Invalid response from function diagram API"}
+
+# Function to query the FMEA API
+def query_fmea_api(user_input):
+    response = requests.post(FMEA, json={"question": user_input})
+    try:
+        return response.json()
+    except json.JSONDecodeError:
+        return {"error": "Invalid response from FMEA API"}
 
 # Streamlit app
 st.title("System Design AI")
@@ -83,6 +126,7 @@ if 'table_data' not in st.session_state:
     st.session_state.locked = False  # To lock the table after clicking Next
     st.session_state.component_diagram = None
     st.session_state.function_diagram = None
+    st.session_state.fmea_data = None
 
 # Text input for user to enter their question
 user_input = st.text_input("Generate experimentation plan for...")
@@ -90,8 +134,8 @@ user_input = st.text_input("Generate experimentation plan for...")
 # Button to generate response from the first API
 if st.button("Generate") and not st.session_state.locked:  # Disable button when table is locked
     if user_input:
-        with st.spinner("Generating Components and function..."):
-            response = query_flowise_api(API_URL_1, {"question": user_input})
+        with st.spinner("Generating Components and Functions..."):
+            response = query_flowise_api(Component_Function, {"question": user_input})
             if "error" in response:
                 st.error(response["error"])
             else:
@@ -117,7 +161,7 @@ if st.session_state.table_data:
         question_json = json.dumps(question_data)
         
         with st.spinner("Generating Engineering Requirements..."):
-            response = query_flowise_api(API_URL_2, {"question": question_json})
+            response = query_flowise_api(Engineering_Requirements, {"question": question_json})
             eng_req_table_data = json_to_engineering_req_table(response)
             st.session_state.eng_req_data = eng_req_table_data
 
@@ -155,3 +199,40 @@ if st.session_state.component_diagram:
 if st.session_state.function_diagram:
     st.subheader("Function Diagram:")
     st.json(st.session_state.function_diagram)
+    
+    # Add the "Next" button to generate the FMEA
+    if st.button("Next for FMEA"):
+        # Prepare the question from the generated components and functions
+        components_and_functions_data = {
+            "components_and_functions": [
+                {"specification_category": row[0], "component": row[1], "function": row[2]}
+                for row in st.session_state.table_data
+            ]
+        }
+        fmea_question = json.dumps(components_and_functions_data)
+        
+        with st.spinner("Generating FMEA..."):
+            response = query_fmea_api(fmea_question)
+            fmea_table_data = json_to_fmea_table(response)
+            st.session_state.fmea_data = fmea_table_data
+
+# Display the FMEA data in table format
+if st.session_state.fmea_data:
+    st.subheader("FMEA Data:")
+    fmea_headers = [
+        'ID', 
+        'Name of Related Function', 
+        'Name of Requirement', 
+        'Potential Failure Mode', 
+        'Effects of Failure', 
+        'Severity', 
+        'Cause of Failure', 
+        'Occurance',
+        'Design Controls', 
+        'Detection', 
+        'RPN', 
+        'Recommended Actions'
+    ]
+    fmea_table = [fmea_headers] + st.session_state.fmea_data
+    st.table(fmea_table)
+

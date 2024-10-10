@@ -1,18 +1,17 @@
 import streamlit as st
 import requests
 import json
+import re
 
-# First API URL
+# API URLs
 API_URL_1 = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/b83d91c5-7db1-4426-815b-d3b4e48cde31"
-
-# Second API URL (for the Next button)
 API_URL_2 = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/f9893e95-2172-4b00-9b45-b14748ad1ae9"
+MERMAID_API_URL = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/3e98e228-996a-4205-8c75-3cf34774b088"
+FUNCTION_DIAGRAM_API_URL = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/9297a1fe-c925-4c00-9217-608d891b81ef"
 
-# Function to send request to Flowise API
+# Function to query Flowise API
 def query_flowise_api(api_url, payload):
     response = requests.post(api_url, json=payload)
-    
-    # Check if response is valid and contains JSON
     try:
         return response.json()
     except json.JSONDecodeError:
@@ -20,10 +19,8 @@ def query_flowise_api(api_url, payload):
 
 # Function to convert JSON response to table data
 def json_to_table_data(response_data):
-    # Parse the JSON string from the 'text' field
     json_str = response_data.get('text', '{}').strip('```json').strip()  # Strip Markdown and extra spaces
     
-    # Attempt to load JSON, handling any errors
     try:
         json_data = json.loads(json_str)
     except json.JSONDecodeError:
@@ -34,19 +31,58 @@ def json_to_table_data(response_data):
     if not components_and_functions:
         return [], ["No data found in the 'components_and_functions' key."]
     
-    # Prepare data for the table
     table_data = [[item['specification_category'], item['component'], item['function']] 
                   for item in components_and_functions]
     
     return table_data
 
+# Function to convert JSON response to table data for Engineering Requirements
+def json_to_engineering_req_table(response_data):
+    text = response_data.get('text', '')
+    json_match = re.search(r'```json\n([\s\S]*?)\n```', text)
+    
+    if not json_match:
+        return [["No JSON data found in the response."]]
+    
+    json_str = json_match.group(1)
+    
+    try:
+        json_data = json.loads(json_str)
+    except json.JSONDecodeError:
+        return [["Error decoding JSON from 'text' field."]]
+    
+    table_data = [[item.get('id', ''), item.get('user_need', ''), 
+                   item.get('tech_id', ''), item.get('description', '')] 
+                  for item in json_data]
+    
+    return table_data if table_data else [["No data found in the JSON."]]
+
+# Function to query the Mermaid API for component diagram
+def query_mermaid_api(user_input):
+    response = requests.post(MERMAID_API_URL, json={"question": user_input})
+    try:
+        return response.json()
+    except json.JSONDecodeError:
+        return {"error": "Invalid response from mermaid API"}
+
+# Function to query the function diagram API
+def query_function_diagram_api(user_input):
+    response = requests.post(FUNCTION_DIAGRAM_API_URL, json={"question": user_input})
+    try:
+        return response.json()
+    except json.JSONDecodeError:
+        return {"error": "Invalid response from function diagram API"}
+
 # Streamlit app
 st.title("System Design AI")
 
-# Initialize session state to store the generated table data
+# Initialize session state to store generated table data
 if 'table_data' not in st.session_state:
     st.session_state.table_data = None
+    st.session_state.eng_req_data = None
     st.session_state.locked = False  # To lock the table after clicking Next
+    st.session_state.component_diagram = None
+    st.session_state.function_diagram = None
 
 # Text input for user to enter their question
 user_input = st.text_input("Generate experimentation plan for...")
@@ -54,56 +90,68 @@ user_input = st.text_input("Generate experimentation plan for...")
 # Button to generate response from the first API
 if st.button("Generate") and not st.session_state.locked:  # Disable button when table is locked
     if user_input:
-        with st.spinner("Genenrating Components and function..."):
-            # Send the user input to the first API and get the response
+        with st.spinner("Generating Components and function..."):
             response = query_flowise_api(API_URL_1, {"question": user_input})
-            
-            # Debug: Display raw API response
-            # st.subheader("Raw API Response:")
-            # st.json(response)
-            
-            # Handle cases where there's an error in the response
             if "error" in response:
                 st.error(response["error"])
             else:
-                # Convert JSON response to table data
                 table_data = json_to_table_data(response)
-                
-                # Store the generated table data in session state
                 st.session_state.table_data = table_data
 
 # Display the generated table if available
 if st.session_state.table_data:
     st.subheader("Components and Functions:")
     headers = ['Specification Category', 'Component', 'Function']
-    
-    # Combine headers with data and display table
     table_data = [headers] + st.session_state.table_data
-    st.table(table_data)  # Display as table
-    
+    st.table(table_data)
+
     # Show the "Next" button only if the table is generated
     if st.button("Next") and not st.session_state.locked:
-        # Lock the table to prevent further changes
         st.session_state.locked = True
-        
-        # Prepare the new "question" from the table data
         question_data = {
             "components_and_functions": [
                 {"specification_category": row[0], "component": row[1], "function": row[2]}
                 for row in st.session_state.table_data
             ]
         }
-        question_json = json.dumps(question_data)  # Convert to JSON format
+        question_json = json.dumps(question_data)
         
-        # st.subheader("Next Step: Sending Data")
-        # st.write(f"Sending the following components and functions as a question:\n{question_json}")
-        
-        # Send the generated data to the second API
-        with st.spinner("Genenrating ENgineering Requirements..."):
+        with st.spinner("Generating Engineering Requirements..."):
             response = query_flowise_api(API_URL_2, {"question": question_json})
-            
-            # Show API response
-            st.subheader("Engineering Requirements:")
-            st.json(response)
-else:
-    st.write("Please generate the components and functions first.")
+            eng_req_table_data = json_to_engineering_req_table(response)
+            st.session_state.eng_req_data = eng_req_table_data
+
+# Display the Engineering Requirements table if available
+if st.session_state.eng_req_data:
+    st.subheader("Engineering Requirements:")
+    headers = ['User Req ID', 'User Need', 'Technical Req ID', 'Description']
+    eng_req_table = [headers] + st.session_state.eng_req_data
+    st.table(eng_req_table)
+    
+    # Add another "Next" button for the component diagram API call
+    if st.button("Next for Component Diagram"):
+        with st.spinner("Generating Component Diagram..."):
+            response = query_mermaid_api(user_input)
+            if "error" in response:
+                st.error(response["error"])
+            else:
+                st.session_state.component_diagram = response
+
+# Display the component diagram if available
+if st.session_state.component_diagram:
+    st.subheader("Component Diagram:")
+    st.json(st.session_state.component_diagram)
+    
+    # Add a "Next" button to generate the function diagram
+    if st.button("Next for Function Diagram"):
+        with st.spinner("Generating Function Diagram..."):
+            response = query_function_diagram_api(user_input)
+            if "error" in response:
+                st.error(response["error"])
+            else:
+                st.session_state.function_diagram = response
+
+# Display the function diagram if available
+if st.session_state.function_diagram:
+    st.subheader("Function Diagram:")
+    st.json(st.session_state.function_diagram)

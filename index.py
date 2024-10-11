@@ -13,7 +13,7 @@ Engineering_Requirements = "https://hemapriyadharshini-flowise.hf.space/api/v1/p
 Component_Diagram = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/3e98e228-996a-4205-8c75-3cf34774b088"
 Function_Diagram = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/9297a1fe-c925-4c00-9217-608d891b81ef"
 FMEA = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/fe1c2f99-b3a6-4b2f-9145-c6e07c686483"
-DVP_AND_API = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/618993c3-15d8-46b2-915d-71130090f6d1"
+DVPR = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/618993c3-15d8-46b2-915d-71130090f6d1"
 
 # Function to query Flowise API
 def query_flowise_api(api_url, payload):
@@ -100,7 +100,7 @@ def json_to_fmea_table(response_data):
 # Function to query the DVP&R API
 def query_dvp_and_api(engineering_requirements, fmea):
     combined_question = f"Generate DVP&R based on Engineering Requirements: {engineering_requirements} and FMEA: {fmea}."
-    response = requests.post(DVP_AND_API, json={"question": combined_question})
+    response = requests.post(DVPR, json={"question": combined_question})
     try:
         return response.json()
     except json.JSONDecodeError:

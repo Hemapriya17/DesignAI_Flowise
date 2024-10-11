@@ -9,6 +9,7 @@ Engineering_Requirements = "https://hemapriyadharshini-flowise.hf.space/api/v1/p
 Component_Diagram = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/3e98e228-996a-4205-8c75-3cf34774b088"
 Function_Diagram = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/9297a1fe-c925-4c00-9217-608d891b81ef"
 FMEA = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/fe1c2f99-b3a6-4b2f-9145-c6e07c686483"
+DVP_AND_API = "https://hemapriyadharshini-flowise.hf.space/api/v1/prediction/618993c3-15d8-46b2-915d-71130090f6d1"
 
 # Function to query Flowise API
 def query_flowise_api(api_url, payload):
@@ -92,29 +93,38 @@ def json_to_fmea_table(response_data):
     
     return table_data
 
-# Function to query the Mermaid API for component diagram
-def query_mermaid_api(user_input):
-    response = requests.post(Component_Diagram, json={"question": user_input})
+# Function to query the DVP&R API
+def query_dvp_and_api(engineering_requirements, fmea):
+    combined_question = f"Generate DVP&R based on Engineering Requirements: {engineering_requirements} and FMEA: {fmea}."
+    response = requests.post(DVP_AND_API, json={"question": combined_question})
     try:
         return response.json()
     except json.JSONDecodeError:
-        return {"error": "Invalid response from mermaid API"}
+        return {"error": "Invalid response from DVP&R API"}
 
-# Function to query the function diagram API
-def query_function_diagram_api(user_input):
-    response = requests.post(Function_Diagram, json={"question": user_input})
-    try:
-        return response.json()
-    except json.JSONDecodeError:
-        return {"error": "Invalid response from function diagram API"}
+# Function to convert DVP&R response to table data
+def json_to_dvpr_table(response_data):
+    dvpr_data = response_data.get('text', '')
 
-# Function to query the FMEA API
-def query_fmea_api(user_input):
-    response = requests.post(FMEA, json={"question": user_input})
     try:
-        return response.json()
+        dvpr_json = json.loads(dvpr_data.strip('```json').strip())  # Parse the JSON if it's wrapped in code blocks
     except json.JSONDecodeError:
-        return {"error": "Invalid response from FMEA API"}
+        return [["Error decoding JSON from DVP&R response."]]
+    
+    dvpr_table = [
+        [
+            item.get('related_id', ''),
+            item.get('test_no', ''),
+            item.get('test_name', ''),
+            item.get('method', ''),
+            item.get('duration',''),
+            item.get('acceptance_criteria','')
+
+        ]
+        for item in dvpr_json.get('dvpr', [])
+    ]
+    
+    return dvpr_table if dvpr_table else [["No DVP&R data found."]]
 
 # Streamlit app
 st.title("System Design AI")
@@ -127,6 +137,7 @@ if 'table_data' not in st.session_state:
     st.session_state.component_diagram = None
     st.session_state.function_diagram = None
     st.session_state.fmea_data = None
+    st.session_state.dvp_and_data = None  # To store DVP&R data
 
 # Text input for user to enter their question
 user_input = st.text_input("Generate experimentation plan for...")
@@ -175,7 +186,7 @@ if st.session_state.eng_req_data:
     # Add another "Next" button for the component diagram API call
     if st.button("Next for Component Diagram"):
         with st.spinner("Generating Component Diagram..."):
-            response = query_mermaid_api(user_input)
+            response = query_flowise_api(Component_Diagram, {"question": user_input})
             if "error" in response:
                 st.error(response["error"])
             else:
@@ -189,7 +200,7 @@ if st.session_state.component_diagram:
     # Add a "Next" button to generate the function diagram
     if st.button("Next for Function Diagram"):
         with st.spinner("Generating Function Diagram..."):
-            response = query_function_diagram_api(user_input)
+            response = query_flowise_api(Function_Diagram, {"question": user_input})
             if "error" in response:
                 st.error(response["error"])
             else:
@@ -199,40 +210,35 @@ if st.session_state.component_diagram:
 if st.session_state.function_diagram:
     st.subheader("Function Diagram:")
     st.json(st.session_state.function_diagram)
-    
-    # Add the "Next" button to generate the FMEA
-    if st.button("Next for FMEA"):
-        # Prepare the question from the generated components and functions
-        components_and_functions_data = {
-            "components_and_functions": [
-                {"specification_category": row[0], "component": row[1], "function": row[2]}
-                for row in st.session_state.table_data
-            ]
-        }
-        fmea_question = json.dumps(components_and_functions_data)
-        
-        with st.spinner("Generating FMEA..."):
-            response = query_fmea_api(fmea_question)
-            fmea_table_data = json_to_fmea_table(response)
-            st.session_state.fmea_data = fmea_table_data
 
-# Display the FMEA data in table format
+    # Add a "Next" button to generate the FMEA table
+    if st.button("Next for FMEA"):
+        with st.spinner("Generating FMEA..."):
+            response = query_flowise_api(FMEA, {"question": user_input})
+            if "error" in response:
+                st.error(response["error"])
+            else:
+                fmea_table_data = json_to_fmea_table(response)
+                st.session_state.fmea_data = fmea_table_data
+
+# Display the FMEA table if available
 if st.session_state.fmea_data:
-    st.subheader("FMEA Data:")
-    fmea_headers = [
-        'ID', 
-        'Name of Related Function', 
-        'Name of Requirement', 
-        'Potential Failure Mode', 
-        'Effects of Failure', 
-        'Severity', 
-        'Cause of Failure', 
-        'Occurance',
-        'Design Controls', 
-        'Detection', 
-        'RPN', 
-        'Recommended Actions'
-    ]
+    st.subheader("Failure Mode Analysis:")
+    fmea_headers = ['ID', 'Related Function', 'Requirement', 'Failure Mode', 'Effects', 'Severity', 
+                    'Cause', 'Occurrence', 'Controls', 'Detection', 'RPN', 'Recommended Actions']
     fmea_table = [fmea_headers] + st.session_state.fmea_data
     st.table(fmea_table)
+    
+    # Add a "Next" button for the DVP&R table generation
+    if st.button("Generate DVP&R"):
+        with st.spinner("Generating DVP&R..."):
+            dvpr_response = query_dvp_and_api(st.session_state.eng_req_data, st.session_state.fmea_data)
+            dvpr_table_data = json_to_dvpr_table(dvpr_response)
+            st.session_state.dvp_and_data = dvpr_table_data
 
+# Display the DVP&R table if available
+if st.session_state.dvp_and_data:
+    st.subheader("Design Verification Plan:")
+    dvpr_headers = ['Related ID', 'Test Number', 'Test Name', 'Test Method', 'Duration', 'Acceptance Criteria']
+    dvpr_table = [dvpr_headers] + st.session_state.dvp_and_data
+    st.table(dvpr_table)
